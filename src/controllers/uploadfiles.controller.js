@@ -1,40 +1,99 @@
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs')
+const multer = require("multer");
+const { ApiRes } = require("../utils/response");
+const {
+    uploadSingleImage,
+    uploadMultipleImages,
+    deleteImage,
+    deleteMultipleImages
+} = require("../utils/uploadImage");
 
-const ApiRes = require("../utils/response");
+const allowedMimeTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp"
+];
 
-
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
-}
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadDir);
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        // Max 5MB per file and max 10 files per request.
+        fileSize: 5 * 1024 * 1024,
+        files: 10
     },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + '-' + file.originalname);
+    fileFilter: (req, file, cb) => {
+        if (!allowedMimeTypes.includes(file.mimetype)) {
+            cb(new Error("Chi chap nhan file anh JPG, PNG, GIF, WEBP"));
+            return;
+        }
+        cb(null, true);
     }
 });
 
-const upload = multer({ storage: storage });
+const uploadSingle = async (req, res) => {
+    try {
+        if (!req.file) {
+            return ApiRes.badRequest(res, "Vui long chon file de upload");
+        }
 
-const uploadFiles = async (req, res) => {
+        const folder = req.body.folder || "nestora";
+        const result = await uploadSingleImage(req.file, folder);
 
-    if (!req.files || req.files.length === 0) {
-        return ApiRes.error(res, "No files were uploaded.");
+        return ApiRes.success(res, "Upload anh thanh cong", result);
+    } catch (error) {
+        return ApiRes.serverError(res, error.message, error);
     }
-    const fileInfos = req.files.map(file => ({
-        name: file.originalname,
-        fileName: file.filename,
-    }));
-    return ApiRes.success(res, "Upload files thành công", { files: fileInfos });
+};
+
+const uploadMultiple = async (req, res) => {
+    try {
+        if (!req.files || req.files.length === 0) {
+            return ApiRes.badRequest(res, "Vui long chon it nhat mot file de upload");
+        }
+
+        const folder = req.body.folder || "nestora";
+        const results = await uploadMultipleImages(req.files, folder);
+
+        return ApiRes.success(res, `Upload ${results.length} anh thanh cong`, results);
+    } catch (error) {
+        return ApiRes.serverError(res, error.message, error);
+    }
+};
+
+const removeSingle = async (req, res) => {
+    try {
+        const { publicId } = req.body;
+
+        if (!publicId) {
+            return ApiRes.badRequest(res, "Thieu publicId de xoa anh");
+        }
+
+        const result = await deleteImage(publicId);
+        return ApiRes.success(res, "Xoa anh thanh cong", result);
+    } catch (error) {
+        return ApiRes.serverError(res, error.message, error);
+    }
+};
+
+const removeMultiple = async (req, res) => {
+    try {
+        const { publicIds } = req.body;
+
+        if (!Array.isArray(publicIds) || publicIds.length === 0) {
+            return ApiRes.badRequest(res, "publicIds phai la mang va khong duoc rong");
+        }
+
+        const result = await deleteMultipleImages(publicIds);
+        return ApiRes.success(res, "Xoa nhieu anh thanh cong", result);
+    } catch (error) {
+        return ApiRes.serverError(res, error.message, error);
+    }
 };
 
 module.exports = {
-    uploadDir,
     upload,
-    uploadFiles
+    uploadSingle,
+    uploadMultiple,
+    removeSingle,
+    removeMultiple
 };

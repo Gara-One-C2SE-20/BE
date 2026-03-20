@@ -6,13 +6,15 @@ const {
     createOrderServiceSchema,
     putVehicleConditionsSchema,
     putEstimateCostSchema,
-    putFinalCostSchema
+    putFinalCostSchema,
 } = require("../validators/orderServices.validator.js")
 
 const {
     getServiceOrderById,
     getAllServiceOrders,
     getStaffServiceOrders,
+    getMyOrders,
+    getMyOrderById,
     createServiceOrder,
     nextStatusInsection,
     putVehicleConditions,
@@ -21,6 +23,7 @@ const {
     nextStatusProcessing,
     nextStatusProcessed,
     putFinalCost,
+    setCheckoutStatus,
     setCompletedStatus,
     setCancelledStatus
 } = require("../controllers/serviceOrder.controller.js");
@@ -31,6 +34,16 @@ const router = express.Router();
 router.get("/get-staff-orders",
     authorize(ROLES.STAFF),
     getStaffServiceOrders
+);
+
+router.get("/my-orders",
+    authorize(ROLES.CUSTOMER),
+    getMyOrders
+);
+
+router.get("/my-orders/:serviceOrderId",
+    authorize(ROLES.CUSTOMER),
+    getMyOrderById
 );
 
 
@@ -83,9 +96,24 @@ router.put("/update-final-cost/:serviceOrderId",
     putFinalCost
 );
 
+router.post("/next-status-invoice/:serviceOrderId",
+    authorize(ROLES.STAFF),
+    setCheckoutStatus
+);
+
+router.post("/set-completed/:serviceOrderId",
+    authorize(ROLES.STAFF),
+    setCompletedStatus
+);
+
+router.post("/set-cancelled/:serviceOrderId",
+    authorize(ROLES.STAFF),
+    setCancelledStatus
+);
+
 // Lấy chi tiết phiếu dịch vụ theo ID (đặt cuối để không conflict)
 router.get("/:serviceOrderId",
-    authorize(ROLES.STAFF),
+    authorize(ROLES.ADMIN, ROLES.STAFF),
     getServiceOrderById
 );
 

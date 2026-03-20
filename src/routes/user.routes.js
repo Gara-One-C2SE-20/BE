@@ -2,12 +2,15 @@ const express = require("express");
 const { authenticate } = require("../middlewares/auth.middleware.js");
 const { authorize } = require("../middlewares/rbac.middleware.js");
 const { ROLES } = require("../constants/roles.js");
-const { getAllUsers, getMe, updateProfile, getStaffUsers, getCustomerUsers, setActiveCustomerUser, setActiveStaffUser } = require("../controllers/user.controller.js");
+const { getAllUsers, getMe, updateProfile, changePassword, getStaffUsers, getCustomerUsers, setActiveCustomerUser, setActiveStaffUser, createStaff } = require("../controllers/user.controller.js");
+const { validate } = require("../middlewares/validate.middleware.js");
+const { createStaffSchema, changePasswordSchema } = require("../validators/user.validator.js");
 
 const router = express.Router();
 
 router.get("/me", authenticate, getMe);
 router.patch("/me", authenticate, updateProfile);
+router.patch("/change-password", authenticate, validate(changePasswordSchema), changePassword);
 
 
 router.get(
@@ -34,6 +37,14 @@ router.patch(
     authenticate,
     authorize(ROLES.ADMIN),
     setActiveStaffUser
+);
+
+router.post(
+    "/create-staff",
+    authenticate,
+    authorize(ROLES.ADMIN),
+    validate(createStaffSchema),
+    createStaff
 );
 
 module.exports = router;

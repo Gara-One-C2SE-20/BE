@@ -4,6 +4,7 @@ const ORDER_STATUS = {
     ESTIMATECOST : "Dự báo chi phí",
     PROCESSING: "Đang xử lý",
     PROCESSED: "Xử lý xong",
+    CHECKOUT: "Checkout",
     COMPLETED: "Hoàn thành",
     CANCELLED: "Đã Hủy"
 };

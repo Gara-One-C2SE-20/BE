@@ -38,15 +38,14 @@ const putEstimateCostSchema = z.object({
 });
 
 const putFinalCostSchema = z.object({
-    finalCost: z.array(
-        quoteSchema
-    ).min(1, "Phải có ít nhất một mục chi phí cuối cùng")
+    finalCost: z.array(quoteSchema).optional()
 }); 
+
 
 
 module.exports = {
     createOrderServiceSchema,
     putVehicleConditionsSchema,
     putEstimateCostSchema,
-    putFinalCostSchema
+    putFinalCostSchema,
 };
