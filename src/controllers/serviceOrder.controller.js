@@ -1,15 +1,32 @@
 
 
+const mongoose = require("mongoose");
 const User = require("../models/User.model");
 const ServiceOrder = require("../models/ServiceOrder.model");
 const Invoice = require("../models/Invoice.model");
 const { Vehicle } = require("../models/Vehicle.model");
+const { Appointment, APPOINTMENT_STATUS } = require("../models/Appointment.model");
 const { ROLES } = require("../constants/roles");
 const { ORDER_STATUS } = require("../constants/order");
 const { ApiRes } = require("../utils/response");
+const { ORDER_CREATION_GRACE_MS } = require("../services/appointment-expiry.service");
 
 const invoiceSelect = "invoiceNumber subtotal discount tax totalAmount paymentStatus paymentMethod paidAt createdAt updatedAt";
 const statusesWithInvoice = [ORDER_STATUS.CHECKOUT, ORDER_STATUS.COMPLETED];
+
+const normalizeQuoteItems = (items = []) => {
+    return items.map((item) => {
+        const quantity = Number(item?.quantity) || 0;
+        const unitPrice = Number(item?.unitPrice) || 0;
+        return {
+            name: item?.name || "",
+            unit: item?.unit || "cái",
+            quantity,
+            unitPrice,
+            totalPrice: Number(item?.totalPrice) || quantity * unitPrice
+        };
+    });
+};
 
 const attachInvoiceForCheckout = async (serviceOrder) => {
     if (!serviceOrder || !statusesWithInvoice.includes(serviceOrder.status)) {
@@ -125,10 +142,34 @@ const getStaffServiceOrders = async (req, res) => {
 
 
 const createServiceOrder = async (req, res, next) => {
-    const { customer, vehicle, customerRequirements } = req.body;
+    const { customer, vehicle, customerRequirements, appointmentId } = req.body;
     const customerInfo = await User.findById(customer);
     if (!customerInfo || customerInfo.role !== ROLES.CUSTOMER) {
         return ApiRes.badRequest(res, "Khách hàng không hợp lệ");
+    }
+
+    let appointmentToLink = null;
+    if (appointmentId) {
+        if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+            return ApiRes.badRequest(res, "Mã lịch hẹn không hợp lệ");
+        }
+        appointmentToLink = await Appointment.findById(appointmentId);
+        if (!appointmentToLink) {
+            return ApiRes.badRequest(res, "Không tìm thấy lịch hẹn");
+        }
+        if (appointmentToLink.customer.toString() !== customer.toString()) {
+            return ApiRes.badRequest(res, "Khách hàng không khớp với lịch hẹn");
+        }
+        if (appointmentToLink.serviceOrder) {
+            return ApiRes.badRequest(res, "Lịch hẹn này đã được gắn phiếu dịch vụ");
+        }
+        if ([APPOINTMENT_STATUS.CANCELLED, APPOINTMENT_STATUS.CONVERTED].includes(appointmentToLink.status)) {
+            return ApiRes.badRequest(res, "Lịch hẹn không còn hợp lệ để gắn phiếu");
+        }
+        const orderCreationDeadline = new Date(appointmentToLink.appointmentDate.getTime() + ORDER_CREATION_GRACE_MS);
+        if (new Date() > orderCreationDeadline) {
+            return ApiRes.badRequest(res, "Đã quá thời hạn gắn phiếu với lịch hẹn này");
+        }
     }
 
     // Sync với Vehicle collection nếu có VIN
@@ -153,13 +194,15 @@ const createServiceOrder = async (req, res, next) => {
     }
 
     const orderNumber = await ServiceOrder.generateOrderNumber();
-    const existingOrder = await ServiceOrder.findOne({
-        "vehicle.vin": vehicleData.vin,
-        status: { $nin: [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED] }
-    });
+    if (vehicleData.vin) {
+        const existingOrder = await ServiceOrder.findOne({
+            "vehicle.vin": vehicleData.vin,
+            status: { $nin: [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED] }
+        });
 
-    if (existingOrder) {
-        return ApiRes.badRequest(res, "Đã tồn tại phiếu dịch vụ cho xe này đang ở trạng thái 'Tiếp nhận' hoặc 'Đang xử lý'");
+        if (existingOrder) {
+            return ApiRes.badRequest(res, "Đã tồn tại phiếu dịch vụ cho xe này đang ở trạng thái 'Tiếp nhận' hoặc 'Đang xử lý'");
+        }
     }
 
     const serviceOrder = await ServiceOrder.create({
@@ -169,6 +212,13 @@ const createServiceOrder = async (req, res, next) => {
         customerRequirements,
         createdBy: req.user.id
     });
+
+    if (appointmentToLink) {
+        appointmentToLink.serviceOrder = serviceOrder._id;
+        appointmentToLink.status = APPOINTMENT_STATUS.CONVERTED;
+        await appointmentToLink.save();
+    }
+
     const populatedServiceOrder = await serviceOrder.populate([
         { path: 'customer', select: '_id email profile.fullName profile.phone' },
         { path: 'createdBy', select: '_id email profile.fullName' }
@@ -268,6 +318,11 @@ const nextStatusProcessed = async (req, res) => {
     if (serviceOrder.status !== ORDER_STATUS.PROCESSING) {
         return ApiRes.badRequest(res, "Chỉ có thể chuyển trạng thái khi phiếu dịch vụ ở trạng thái 'Đang xử lý'");
     }
+
+    if ((!serviceOrder.finalCost || serviceOrder.finalCost.length === 0) && (serviceOrder.estimateCost || []).length > 0) {
+        serviceOrder.finalCost = normalizeQuoteItems(serviceOrder.estimateCost);
+    }
+
     serviceOrder.status = ORDER_STATUS.PROCESSED;
     await serviceOrder.save();
     return ApiRes.success(res, "Chuyển trạng thái 'Xử lý xong' thành công", { serviceOrder });

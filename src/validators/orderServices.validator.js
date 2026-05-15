@@ -4,6 +4,8 @@ const {z} = require('zod');
 const createOrderServiceSchema = z.object({
     customer : z.string().min(8, "Id khách hàng không được để trống"), // objectId
     customerRequirements: z.string().optional(),
+    /** Gắn phiếu với lịch hẹn sau khi nhân viên đã kiểm tra form tiếp nhận */
+    appointmentId: z.string().trim().min(1).optional(),
     vehicle: z.object({
         licensePlate: z.string().min(1, "Biển số xe không được để trống"),
         brand: z.string().optional(),

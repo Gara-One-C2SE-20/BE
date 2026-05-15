@@ -28,6 +28,34 @@ const updateProfile = async (req, res, next) => {
     return ApiRes.success(res, "Cập nhật thông tin người dùng thành công", { user });
 };
 
+const adminUpdateUserProfile = async (req, res, next) => {
+    const { userId } = req.params;
+    const { fullName, phone, address, dateOfBirth, role } = req.body;
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser) return ApiRes.notFound(res, "Người dùng không tồn tại");
+
+    if (role !== undefined) {
+        if (targetUser.role === ROLES.ADMIN) {
+            return ApiRes.badRequest(res, "Không thể thay đổi vai trò tài khoản ADMIN");
+        }
+
+        if (req.user.id === String(userId)) {
+            return ApiRes.badRequest(res, "Không thể tự thay đổi vai trò của chính bạn");
+        }
+    }
+
+    const updateFields = {};
+    if (fullName !== undefined) updateFields["profile.fullName"] = fullName;
+    if (phone !== undefined) updateFields["profile.phone"] = phone;
+    if (address !== undefined) updateFields["profile.address"] = address;
+    if (dateOfBirth !== undefined) updateFields["profile.dateOfBirth"] = new Date(dateOfBirth);
+    if (role !== undefined) updateFields["role"] = role;
+
+    const user = await User.findByIdAndUpdate(userId, { $set: updateFields }, { new: true }).select("-password");
+    return ApiRes.success(res, "Cập nhật hồ sơ người dùng thành công", { user });
+};
+
 const changePassword = async (req, res, next) => {
     const { currentPassword, newPassword } = req.body;
 
@@ -113,4 +141,4 @@ const createStaff = async (req, res, next) => {
     return ApiRes.created(res, "Tạo tài khoản nhân viên thành công", { user: userObject });
 };
 
-module.exports = { getMe, updateProfile, changePassword, getCustomerUsers, getStaffUsers, setActiveCustomerUser, setActiveStaffUser, createStaff };
+module.exports = { getMe, updateProfile, adminUpdateUserProfile, changePassword, getCustomerUsers, getStaffUsers, setActiveCustomerUser, setActiveStaffUser, createStaff };

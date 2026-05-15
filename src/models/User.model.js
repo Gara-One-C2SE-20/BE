@@ -15,7 +15,14 @@ const userSchema = new mongoose.Schema({
         dateOfBirth: { type: Date },
         avatarUrl: { type: String }
     },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true },
+    isEmailVerified: { type: Boolean, default: true },
+    emailVerification: {
+        codeHash: { type: String, default: null },
+        expiresAt: { type: Date, default: null },
+        attempts: { type: Number, default: 0 },
+        sentAt: { type: Date, default: null }
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

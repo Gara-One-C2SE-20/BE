@@ -1,17 +1,21 @@
 const express = require("express");
-const { 
-    register, 
-    login, 
-    refreshToken, 
+const {
+    register,
+    login,
+    refreshToken,
+    verifyEmail,
+    resendVerificationOtp,
     createStaff
 } = require("../controllers/auth.controller.js");
 const { authenticate, authorize } = require("../middlewares/rbac.middleware.js");
 const { validate } = require("../middlewares/validate.middleware.js");
-const { 
-    registerSchema, 
-    loginSchema, 
+const {
+    registerSchema,
+    loginSchema,
     refreshTokenSchema,
-    createStaffSchema 
+    verifyEmailSchema,
+    resendVerificationOtpSchema,
+    createStaffSchema
 } = require("../validators/auth.validator.js");
 const { ROLES } = require("../constants/roles.js");
 
@@ -24,7 +28,7 @@ router.post(
 );
 
 router.post(
-    "/login", 
+    "/login",
     validate(loginSchema),
     login
 );
@@ -33,6 +37,18 @@ router.post(
     "/refresh-token",
     validate(refreshTokenSchema),
     refreshToken
+);
+
+router.post(
+    "/verify-email",
+    validate(verifyEmailSchema),
+    verifyEmail
+);
+
+router.post(
+    "/resend-verification-otp",
+    validate(resendVerificationOtpSchema),
+    resendVerificationOtp
 );
 
 router.post(

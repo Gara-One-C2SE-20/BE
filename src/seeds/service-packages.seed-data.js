@@ -85,7 +85,7 @@ const servicePackageSeedData = [
     },
     {
         serviceId: "sua-chua-he-thong-treo",
-        categoryId: "gam",
+        categoryId: "gam-treo",
         category: "Gầm & treo",
         name: "Sửa chữa hệ thống treo",
         description: "Thay thế hoặc sửa chữa các bộ phận hệ thống treo",

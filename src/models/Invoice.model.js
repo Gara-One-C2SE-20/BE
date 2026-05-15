@@ -25,11 +25,12 @@ const invoiceSchema = new Schema({
     },
     paymentMethod: {
         type: String,
-        enum: ["Tiền mặt", "Chuyển khoản"],
+        enum: ["Tiền mặt", "Chuyển khoản", "ZaloPay"],
         default: "Tiền mặt"
     },
     paidAt: { type: Date },
-    notes: { type: String, default: "" }
+    notes: { type: String, default: "" },
+    zaloPayTransId: { type: String, default: null }
 }, { timestamps: true });
 
 invoiceSchema.statics.generateInvoiceNumber = async function () {

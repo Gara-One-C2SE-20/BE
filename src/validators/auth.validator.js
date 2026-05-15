@@ -26,6 +26,15 @@ const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token là bắt buộc')
 });
 
+const verifyEmailSchema = z.object({
+  email: z.string().email('Email không hợp lệ'),
+  otp: z.string().regex(/^\d{6}$/, 'Mã OTP phải gồm 6 chữ số')
+});
+
+const resendVerificationOtpSchema = z.object({
+  email: z.string().email('Email không hợp lệ')
+});
+
 const createStaffSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
   password: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự'),
@@ -47,5 +56,7 @@ module.exports = {
   registerSchema,
   loginSchema,
   refreshTokenSchema,
+  verifyEmailSchema,
+  resendVerificationOtpSchema,
   createStaffSchema
 };

@@ -1,7 +1,9 @@
-import mongoose from "mongoose";
-import dns from "node:dns/promises";
+const mongoose = require("mongoose");
+const dns = require("node:dns");
+
 dns.setServers(["1.1.1.1"]);
-export const connectDB = async () => {
+
+const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log("MongoDB connected");
@@ -10,3 +12,5 @@ export const connectDB = async () => {
     process.exit(1);
   }
 };
+
+module.exports = { connectDB };

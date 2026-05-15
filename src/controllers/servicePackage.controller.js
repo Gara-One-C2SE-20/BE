@@ -7,7 +7,7 @@ const defaultCategories = [
     { id: "phanh", name: "Hệ thống phanh" },
     { id: "dien", name: "Hệ thống điện" },
     { id: "dieu-hoa", name: "Điều hòa" },
-    { id: "gam", name: "Gầm & treo" }
+    { id: "gam-treo", name: "Gầm & treo" }
 ];
 
 const normalizeTextToId = (value = "") =>

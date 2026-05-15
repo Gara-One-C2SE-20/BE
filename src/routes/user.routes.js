@@ -2,9 +2,9 @@ const express = require("express");
 const { authenticate } = require("../middlewares/auth.middleware.js");
 const { authorize } = require("../middlewares/rbac.middleware.js");
 const { ROLES } = require("../constants/roles.js");
-const { getAllUsers, getMe, updateProfile, changePassword, getStaffUsers, getCustomerUsers, setActiveCustomerUser, setActiveStaffUser, createStaff } = require("../controllers/user.controller.js");
+const { getMe, updateProfile, adminUpdateUserProfile, changePassword, getStaffUsers, getCustomerUsers, setActiveCustomerUser, setActiveStaffUser, createStaff } = require("../controllers/user.controller.js");
 const { validate } = require("../middlewares/validate.middleware.js");
-const { createStaffSchema, changePasswordSchema } = require("../validators/user.validator.js");
+const { createStaffSchema, changePasswordSchema, adminUpdateUserProfileSchema } = require("../validators/user.validator.js");
 
 const router = express.Router();
 
@@ -37,6 +37,14 @@ router.patch(
     authenticate,
     authorize(ROLES.ADMIN),
     setActiveStaffUser
+);
+
+router.patch(
+    "/:userId/profile",
+    authenticate,
+    authorize(ROLES.ADMIN),
+    validate(adminUpdateUserProfileSchema),
+    adminUpdateUserProfile
 );
 
 router.post(

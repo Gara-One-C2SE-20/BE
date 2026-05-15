@@ -10,6 +10,9 @@ const vehicleRoutes = require("./routes/vehicle.routes.js");
 const appointmentRoutes = require("./routes/appointment.routes.js");
 const newsRoutes = require("./routes/news.routes.js");
 const servicePackageRoutes = require("./routes/servicePackage.routes.js");
+const paymentRoutes = require("./routes/payment.routes.js");
+const chatbotRoutes = require("./routes/chatbot.routes.js");
+const dashboardRoutes = require("./routes/dashboard.routes.js");
 const errorMiddleware = require("./middlewares/error.middleware.js");
 
 const app = express();
@@ -34,6 +37,9 @@ app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/news", newsRoutes);
 app.use("/api/service-packages", servicePackageRoutes);
+app.use("/api/payment", paymentRoutes);
+app.use("/api/chatbot", chatbotRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 app.use((req, res) => {
     res.status(404).json({
         success: false,

@@ -1,0 +1,9 @@
+khi admin unactive user/staff thì phải đợi ACCESS_EXPIRES hết hiệu lực vì tính chất của JWT 
+    ( lưu thông tin người dùng vào token để tránh query và db nhiều lần khi gọi api, chỉ khi token hết hạn 
+    thì thông tin người dùng mới cập nhật lại nên mới có đc thông tin active/unactive )
+
+admin k xóa user/staff vì tính nhất quán, liên kết dữ liệu , chỉ unactive
+
+
+chức năng đặt lịch chưa ràng buộc giờ làm việc 8-19h chủ nhật nghỉ, chưa phản hồi lại lịch giờ đó cấn ko, 
+    nếu cấn gợi ý khoản thời gian tiếp  (đã fix chưa test)

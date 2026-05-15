@@ -1,8 +1,11 @@
 const { Appointment, APPOINTMENT_STATUS } = require("../models/Appointment.model");
 const ServiceOrder = require("../models/ServiceOrder.model");
+const Invoice = require("../models/Invoice.model");
 const { Vehicle } = require("../models/Vehicle.model");
 const { ORDER_STATUS } = require("../constants/order");
 const { ApiRes } = require("../utils/response");
+const { expireAppointmentsByRules, ORDER_CREATION_GRACE_MS } = require("../services/appointment-expiry.service");
+const { sendAppointmentConfirmationEmail } = require("../services/appointment-email.service");
 
 const SLOT_DURATION_MS = 30 * 60 * 1000; // 30 phút
 
@@ -55,18 +58,44 @@ const getMyAppointments = async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
     const now = new Date();
 
-    // Tự động đánh dấu hết hạn
-    await Appointment.updateMany(
-        { customer: req.user.id, expiresAt: { $lt: now }, status: { $in: [APPOINTMENT_STATUS.PENDING, APPOINTMENT_STATUS.CONFIRMED] } },
-        { status: APPOINTMENT_STATUS.EXPIRED }
-    );
+    await expireAppointmentsByRules(now);
 
     const appointments = await Appointment.find({ customer: req.user.id })
         .sort({ appointmentDate: -1 })
         .skip((page - 1) * limit)
-        .limit(Number(limit));
+        .limit(Number(limit))
+        .populate({ path: "serviceOrder", select: "orderNumber status" })
+        .lean();
 
-    return ApiRes.success(res, "Lấy danh sách lịch hẹn thành công", { appointments });
+    const serviceOrderIds = appointments
+        .map((a) => (a.serviceOrder && a.serviceOrder._id ? a.serviceOrder._id : a.serviceOrder))
+        .filter(Boolean);
+
+    let invoiceByOrderId = new Map();
+    if (serviceOrderIds.length > 0) {
+        const invoices = await Invoice.find({ serviceOrder: { $in: serviceOrderIds } })
+            .select("serviceOrder paymentStatus paidAt")
+            .lean();
+        invoiceByOrderId = new Map(
+            invoices.map((inv) => [inv.serviceOrder.toString(), inv])
+        );
+    }
+
+    const appointmentsWithPayment = appointments.map((apt) => {
+        const orderRef = apt.serviceOrder;
+        const orderId = orderRef && orderRef._id ? orderRef._id.toString() : null;
+        if (!orderId) {
+            return { ...apt, hasServiceOrder: false, invoicePaymentStatus: null };
+        }
+        const inv = invoiceByOrderId.get(orderId);
+        return {
+            ...apt,
+            hasServiceOrder: true,
+            invoicePaymentStatus: inv?.paymentStatus || null
+        };
+    });
+
+    return ApiRes.success(res, "Lấy danh sách lịch hẹn thành công", { appointments: appointmentsWithPayment });
 };
 
 // GET /appointments — Staff/Admin xem tất cả lịch
@@ -74,11 +103,7 @@ const getAllAppointments = async (req, res) => {
     const { page = 1, limit = 10, status, date } = req.query;
     const now = new Date();
 
-    // Tự động đánh dấu hết hạn
-    await Appointment.updateMany(
-        { expiresAt: { $lt: now }, status: { $in: [APPOINTMENT_STATUS.PENDING, APPOINTMENT_STATUS.CONFIRMED] } },
-        { status: APPOINTMENT_STATUS.EXPIRED }
-    );
+    await expireAppointmentsByRules(now);
 
     const query = {};
     if (status) query.status = status;
@@ -104,17 +129,13 @@ const getAppointmentById = async (req, res) => {
     const { id } = req.params;
     const now = new Date();
 
+    await expireAppointmentsByRules(now);
+
     const appointment = await Appointment.findById(id)
         .populate("customer", "_id email profile.fullName profile.phone")
         .populate("serviceOrder", "_id orderNumber status");
 
     if (!appointment) return ApiRes.notFound(res, "Không tìm thấy lịch hẹn");
-
-    // Tự cập nhật hết hạn nếu cần
-    if ([APPOINTMENT_STATUS.PENDING, APPOINTMENT_STATUS.CONFIRMED].includes(appointment.status) && appointment.expiresAt < now) {
-        appointment.status = APPOINTMENT_STATUS.EXPIRED;
-        await appointment.save();
-    }
 
     return ApiRes.success(res, "Lấy chi tiết lịch hẹn thành công", { appointment });
 };
@@ -156,6 +177,12 @@ const confirmAppointment = async (req, res) => {
 
     appointment.status = APPOINTMENT_STATUS.CONFIRMED;
     await appointment.save();
+
+    // Gửi email xác nhận lịch hẹn cho khách hàng (non-blocking, không ảnh hưởng response)
+    sendAppointmentConfirmationEmail(appointment).catch((err) => {
+        console.error("[confirmAppointment] sendAppointmentConfirmationEmail error:", err?.message || err);
+    });
+
     return ApiRes.success(res, "Xác nhận lịch hẹn thành công", { appointment });
 };
 
@@ -163,6 +190,8 @@ const confirmAppointment = async (req, res) => {
 const createOrderFromAppointment = async (req, res) => {
     const { id } = req.params;
     const now = new Date();
+
+    await expireAppointmentsByRules(now);
 
     const appointment = await Appointment.findById(id).populate("customer", "_id email profile.fullName profile.phone");
     if (!appointment) return ApiRes.notFound(res, "Không tìm thấy lịch hẹn");
@@ -173,19 +202,25 @@ const createOrderFromAppointment = async (req, res) => {
     if (appointment.status === APPOINTMENT_STATUS.CONVERTED) {
         return ApiRes.badRequest(res, "Lịch hẹn này đã được tạo đơn rồi");
     }
-    if (appointment.expiresAt < now) {
-        appointment.status = APPOINTMENT_STATUS.EXPIRED;
-        await appointment.save();
-        return ApiRes.badRequest(res, "Lịch hẹn đã hết hạn (quá 30 phút), không thể tạo đơn");
+
+    const orderCreationDeadline = new Date(appointment.appointmentDate.getTime() + ORDER_CREATION_GRACE_MS);
+    if (now > orderCreationDeadline) {
+        return ApiRes.badRequest(
+            res,
+            "Đã quá thời hạn tạo phiếu từ lịch hẹn (quá 7 ngày kể từ giờ hẹn). Vui lòng tạo phiếu dịch vụ thủ công cho khách."
+        );
     }
 
-    // Kiểm tra xe đang có order đang xử lý chưa
-    const existingOrder = await ServiceOrder.findOne({
-        "vehicle.vin": appointment.vehicle.vin,
-        status: { $nin: [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED] }
-    });
-    if (existingOrder) {
-        return ApiRes.badRequest(res, "Xe này đang có phiếu dịch vụ đang xử lý");
+    // Kiểm tra xe đang có order đang xử lý chưa (chỉ khi có VIN)
+    const vinRaw = appointment.vehicle?.vin;
+    if (vinRaw && String(vinRaw).trim()) {
+        const existingOrder = await ServiceOrder.findOne({
+            "vehicle.vin": String(vinRaw).trim().toUpperCase(),
+            status: { $nin: [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED] }
+        });
+        if (existingOrder) {
+            return ApiRes.badRequest(res, "Xe này đang có phiếu dịch vụ đang xử lý");
+        }
     }
 
     // Sync Vehicle collection nếu có VIN
